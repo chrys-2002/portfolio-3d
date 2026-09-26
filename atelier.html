@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bi Chrys — Mon atelier numérique</title>
+
+    <!-- Polices : Syne pour les titres, Inter pour le texte -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Syne:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <!-- La scène 3D, fixée en arrière-plan -->
+    <canvas id="webgl"></canvas>
+
+    <!-- Barre de navigation fixe -->
+    <header class="topbar">
+      <a href="#intro" class="logo">Bi<span>Chrys</span></a>
+      <nav>
+        <a href="#projets">Projets</a>
+        <a href="#parcours">Parcours</a>
+        <a href="#perso">Moi</a>
+        <a href="#contact">Contact</a>
+      </nav>
+    </header>
+
+    <!-- Étiquette qui suit l'objet survolé -->
+    <div class="label" aria-hidden="true"></div>
+
+    <main class="content">
+      <!-- 0. Vue d'ensemble -->
+      <section id="intro" class="section">
+        <div class="panel intro is-visible">
+          <p class="tag">Mon atelier numérique</p>
+          <h1>Boli Bi<br /><span>Saint Chryst</span></h1>
+          <p>Développeur web &amp; mobile. Chaque objet de ce bureau raconte une partie de mon travail.</p>
+          <p class="hint">Faites défiler ou cliquez sur un objet</p>
+        </div>
+      </section>
+
+      <!-- 1. L'écran -->
+      <section id="projets" class="section">
+        <div class="panel">
+          <p class="tag">01 — L'écran</p>
+          <h2>Projets</h2>
+          <ul class="list">
+            <li>
+              <strong>KARHON Assurances</strong>
+              <span>Plateforme web de courtage en assurance Next.js</span>
+            </li>
+            <li>
+              <strong>Portfolio 3D</strong>
+              <span>Ce site Three.js, GSAP, Vite</span>
+            </li>
+            <li>
+              <strong>Applications mobiles</strong>
+              <span>Projets Flutter à compléter</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 2. Le carnet -->
+      <section id="parcours" class="section">
+        <div class="panel">
+          <p class="tag">02 Le carnet</p>
+          <h2>Parcours</h2>
+          <p>Licence 3 MIAGE:Université Polytechnique de Bingerville.</p>
+          <div class="chips">
+            <span>React</span>
+            <span>Next.js</span>
+            <span>Flutter</span>
+            <span>MySQL</span>
+            <span>Three.js</span>
+            <span>GSAP</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. La tasse -->
+      <section id="perso" class="section">
+        <div class="panel">
+          <p class="tag">03  La tasse</p>
+          <h2>Derrière l'écran</h2>
+          <p>Basé à Abidjan, Côte d'Ivoire.</p>
+          <p>À compléter : ce qui t'inspire, tes passions, ta façon de travailler…</p>
+        </div>
+      </section>
+
+      <!-- 4. Le téléphone -->
+      <section id="contact" class="section">
+        <div class="panel">
+          <p class="tag">04 Le téléphone</p>
+          <h2>Contact</h2>
+          <p>Un projet, une idée, une opportunité ? Écris-moi.</p>
+          <a class="button" href="mailto:bolichrist2002@gmail.com">bolichrist2002@gmail.com</a>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/src/atelier/main.js"></script>
+  </body>
+</html>
