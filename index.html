@@ -4,35 +4,157 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bi Chrys Portfolio</title>
+    <title>Bi Chrys — Mon atelier numérique</title>
+
+    <!-- Polices : Syne pour les titres, Inter pour le texte -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Syne:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
-    <!-- Le canvas WebGL, fixé en arrière-plan -->
+    <!-- La scène 3D, fixée en arrière-plan -->
     <canvas id="webgl"></canvas>
 
-    <!-- Le contenu HTML qui défile par-dessus -->
+    <!-- Barre de navigation fixe -->
+    <header class="topbar">
+      <a href="#intro" class="logo">Bi<span>Chrys</span></a>
+      <nav>
+        <a href="#projets">Projets</a>
+        <a href="#parcours">Parcours</a>
+        <a href="#perso">Moi</a>
+        <a href="#contact">Contact</a>
+      </nav>
+    </header>
+
+    <!-- Étiquette qui suit l'objet survolé -->
+    <div class="label" aria-hidden="true"></div>
+
     <main class="content">
-      <section class="section hero">
-        <p class="tag">Développeur Web & Mobile</p>
-        <h1>Boli Bi<br /><span>Saint Chryst</span></h1>
+      <!-- 0. Vue d'ensemble -->
+      <section id="intro" class="section">
+        <div class="panel intro is-visible">
+          <p class="tag">Développeur &amp; Data Analyst junior</p>
+          <h1>Boli Bi<br /><span>Saint Chryst</span></h1>
+          <p>
+            Étudiant en Licence 3 MIAGE, je conçois des applications web et mobiles, et j'utilise la
+            donnée pour éclairer les décisions. Chaque objet de ce bureau raconte une partie de mon travail.
+          </p>
+          <p class="hint">Faites défiler ou cliquez sur un objet</p>
+        </div>
       </section>
 
-      <section class="section right">
-        <h2>À propos</h2>
-        <p>Étudiant en MIAGE, je construis des expériences web modernes avec React, Next.js et Flutter.</p>
+      <!-- 1. L'écran -->
+      <section id="projets" class="section">
+        <div class="panel">
+          <p class="tag">01 — L'écran</p>
+          <h2>Projets</h2>
+          <ul class="list">
+            <li>
+              <strong>KARHON Assurances</strong>
+              <span>Plateforme web de courtage en assurance.</span>
+              <em>Next.js</em>
+            </li>
+            <li>
+              <strong>Application bancaire collaborative</strong>
+              <span>Projet d'équipe : application mobile, version web et services backend.</span>
+              <em>Flutter · React · Firebase — 2024-2025</em>
+            </li>
+            <li>
+              <strong>Prototype de gestion — Design Sprint</strong>
+              <span>Analyse d'un problème réel de production et de rentabilité (PalmCI), puis prototype mobile en équipe.</span>
+              <em>Flutter · Design Sprint — 2024-2025</em>
+            </li>
+            <li>
+              <strong>Portfolio 3D</strong>
+              <span>Ce site : une scène 3D interactive animée au scroll.</span>
+              <em>Three.js · GSAP · Vite</em>
+            </li>
+          </ul>
+        </div>
       </section>
 
-      <section class="section left">
-        <h2>Projets</h2>
-        <p>KARHON Assurances, portfolio 3D, applications mobiles…</p>
+      <!-- 2. Le carnet -->
+      <section id="parcours" class="section">
+        <div class="panel">
+          <p class="tag">02 — Le carnet</p>
+          <h2>Parcours</h2>
+          <ul class="timeline">
+            <li>
+              <time>2025 — 2026</time>
+              <strong>Licence 3 MIAGE</strong>
+              <span>Université Polytechnique de Bingerville</span>
+            </li>
+            <li>
+              <time>2024 — 2025</time>
+              <strong>Design Sprint universitaire</strong>
+              <span>Ateliers d'appui à l'écosystème des startups</span>
+            </li>
+            <li>
+              <time>2023 — 2024</time>
+              <strong>Bénévole</strong>
+              <span>Association des étudiants en MIAGE</span>
+            </li>
+            <li>
+              <time>2023</time>
+              <strong>Baccalauréat</strong>
+              <span>Lycée Moderne 2 Abobo</span>
+            </li>
+          </ul>
+          <div class="chips">
+            <span>React</span>
+            <span>Next.js</span>
+            <span>Flutter</span>
+            <span>Firebase</span>
+            <span>Python</span>
+            <span>MySQL</span>
+            <span>Power BI</span>
+            <span>Excel</span>
+            <span>Three.js</span>
+            <span>Agile</span>
+          </div>
+        </div>
       </section>
 
-      <section class="section center">
-        <h2>Contact</h2>
-        <p>bolichrist2002@gmail.com</p>
+      <!-- 3. La tasse -->
+      <section id="perso" class="section">
+        <div class="panel">
+          <p class="tag">03 — La tasse</p>
+          <h2>Derrière l'écran</h2>
+          <p>
+            Basé à Abidjan, Côte d'Ivoire. Ma double compétence en informatique et en management
+            m'oriente vers les applications de gestion et l'analyse de données au service des entreprises.
+          </p>
+          <p>
+            Engagé aussi hors du code : actions humanitaires et soutien scolaire avec l'association
+            des étudiants en MIAGE.
+          </p>
+          <div class="chips">
+            <span>Esprit d'analyse</span>
+            <span>Adaptabilité</span>
+            <span>Travail en équipe</span>
+          </div>
+          <p class="languages">Français · Anglais B2</p>
+        </div>
+      </section>
+
+      <!-- 4. Le téléphone -->
+      <section id="contact" class="section">
+        <div class="panel">
+          <p class="tag">04 — Le téléphone</p>
+          <h2>Contact</h2>
+          <p>Un projet, un stage, une opportunité ? Écris-moi ou appelle-moi.</p>
+          <div class="contact-links">
+            <a class="button" href="mailto:bolichrist2002@gmail.com">bolichrist2002@gmail.com</a>
+            <a class="button button-ghost" href="tel:+2250546175185">+225 05 46 17 51 85</a>
+            <a class="button button-ghost" href="/cv/CV-Boli-Bi-Saint-Chryst.pdf" download>Télécharger mon CV</a>
+          </div>
+        </div>
       </section>
     </main>
 
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="/src/atelier/main.js"></script>
   </body>
 </html>
