@@ -144,7 +144,8 @@ export function createDesk() {
 }
 
 /* ========== L'ÉCRAN ========== */
-export function createMonitor() {
+// screenTexture : l'image à afficher. Par défaut, l'écran statique "PROJETS"
+export function createMonitor(screenTexture = createScreenTexture()) {
   const group = new THREE.Group()
   const dark = new THREE.MeshStandardMaterial({ color: palette.metal, roughness: 0.4, metalness: 0.6 })
 
@@ -161,7 +162,7 @@ export function createMonitor() {
   // il "brille" tout seul comme un vrai écran
   const screen = new THREE.Mesh(
     new THREE.PlaneGeometry(1.42, 0.82),
-    new THREE.MeshBasicMaterial({ map: createScreenTexture(), toneMapped: false })
+    new THREE.MeshBasicMaterial({ map: screenTexture, toneMapped: false })
   )
   screen.position.set(0, 0.7, 0.026)
 
@@ -189,9 +190,11 @@ export function createKeyboard() {
   const cols = 14
   const keys = new THREE.InstancedMesh(
     new RoundedBoxGeometry(0.062, 0.02, 0.062, 2, 0.01),
-    new THREE.MeshStandardMaterial({ color: '#2b2b30', roughness: 0.6 }),
+    // Matériau blanc : la vraie couleur est donnée touche par touche (setColorAt)
+    new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 }),
     rows * cols
   )
+  const keyColor = new THREE.Color('#2b2b30')
 
   const dummy = new THREE.Object3D() // objet "gabarit" pour calculer chaque position
   let index = 0
@@ -200,45 +203,166 @@ export function createKeyboard() {
       dummy.position.set(-0.47 + c * 0.0725, 0.05, -0.11 + r * 0.075)
       dummy.updateMatrix()
       keys.setMatrixAt(index, dummy.matrix)
+      keys.setColorAt(index, keyColor) // chaque touche peut avoir sa propre couleur
       index++
     }
   }
   group.add(keys)
 
   enableShadows(group)
-  return group
+  // On renvoie aussi les touches : screen.js va les animer
+  return { group, keys, rows, cols }
 }
 
 /* ========== LE CARNET ========== */
+
+// La page de droite, écrite à la main (dessinée sur un canvas)
+function createNotebookPageTexture() {
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 688 // même proportion que la page (0,59 x 0,79)
+  const ctx = canvas.getContext('2d')
+
+  // Papier crème
+  ctx.fillStyle = '#f3ecdc'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+  // Lignes de cahier
+  ctx.strokeStyle = 'rgba(90, 110, 160, 0.25)'
+  ctx.lineWidth = 2
+  for (let y = 110; y < canvas.height - 30; y += 42) {
+    ctx.beginPath()
+    ctx.moveTo(40, y)
+    ctx.lineTo(canvas.width - 30, y)
+    ctx.stroke()
+  }
+
+  // Marge rouge
+  ctx.strokeStyle = 'rgba(200, 70, 70, 0.4)'
+  ctx.beginPath()
+  ctx.moveTo(70, 20)
+  ctx.lineTo(70, canvas.height - 20)
+  ctx.stroke()
+
+  // Texte "manuscrit"
+  const write = (text, y, size, color, weight = '') => {
+    ctx.fillStyle = color
+    ctx.font = `${weight} ${size}px "Segoe Script", "Brush Script MT", cursive`
+    ctx.fillText(text, 88, y)
+  }
+  write('Parcours', 96, 44, '#8a6a12', 'bold')
+  write('• Licence 3 MIAGE', 170, 25, '#1f2a44')
+  write('UPB — Bingerville, 2025-2026', 208, 19, '#3a4560')
+  write('• Baccalauréat 2023', 262, 25, '#1f2a44')
+  write('Lycée Moderne 2 Abobo', 300, 19, '#3a4560')
+  write('Compétences', 372, 34, '#8a6a12', 'bold')
+  write('• React · Next.js · Flutter', 440, 21, '#1f2a44')
+  write('• Python · MySQL · Firebase', 482, 21, '#1f2a44')
+  write('• Power BI · Excel', 524, 21, '#1f2a44')
+  write('• Design Sprint · Agile', 566, 21, '#1f2a44')
+  write('À suivre…', 632, 24, '#6b5a3a')
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+
+// L'intérieur de la couverture (visible une fois le carnet ouvert)
+function createNotebookLiningTexture() {
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 688
+  const ctx = canvas.getContext('2d')
+
+  ctx.fillStyle = '#efe6d2'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+  // Cadre doré
+  ctx.strokeStyle = '#b8942c'
+  ctx.lineWidth = 4
+  ctx.strokeRect(36, 36, canvas.width - 72, canvas.height - 72)
+
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#8a6a12'
+  ctx.font = 'bold 40px "Segoe Script", "Brush Script MT", cursive'
+  ctx.fillText('Carnet de', canvas.width / 2, 300)
+  ctx.font = 'bold 56px "Segoe Script", "Brush Script MT", cursive'
+  ctx.fillText('Bi Chrys', canvas.width / 2, 380)
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  // La couverture se retourne en s'ouvrant : on tourne l'image de 180° pour qu'elle soit à l'endroit
+  texture.center.set(0.5, 0.5)
+  texture.rotation = Math.PI
+  return texture
+}
+
 export function createNotebook() {
   const group = new THREE.Group()
   const leather = new THREE.MeshStandardMaterial({ color: palette.leather, roughness: 0.7 })
   const gold = new THREE.MeshStandardMaterial({ color: palette.gold, metalness: 1, roughness: 0.25 })
+  const paper = new THREE.MeshStandardMaterial({ color: palette.paper, roughness: 0.9 })
 
+  // Couverture du dessous : fixe
   const bottomCover = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.012, 0.82), leather)
   bottomCover.position.y = 0.006
 
-  const pages = new THREE.Mesh(
-    new THREE.BoxGeometry(0.59, 0.03, 0.79),
-    new THREE.MeshStandardMaterial({ color: palette.paper, roughness: 0.9 })
-  )
-  pages.position.set(0.01, 0.027, 0)
+  // Bloc de pages : sa face du dessus porte la page écrite.
+  // Une BoxGeometry a 6 faces, donc on peut donner 6 matériaux (ordre : +x, -x, +y, -y, +z, -z)
+  const writtenPage = new THREE.MeshStandardMaterial({ map: createNotebookPageTexture(), roughness: 0.85 })
+  const pageBlock = new THREE.Mesh(new THREE.BoxGeometry(0.59, 0.027, 0.79), [
+    paper,
+    paper,
+    writtenPage, // +y : le dessus
+    paper,
+    paper,
+    paper,
+  ])
+  pageBlock.position.set(0.005, 0.0255, 0)
+
+  // Pages libres qui vont se tourner. Chaque page est dans un "pivot"
+  // placé sur la reliure (à gauche) : tourner le pivot fait tourner la page autour de la reliure
+  const pages = []
+  for (let i = 0; i < 3; i++) {
+    const pivot = new THREE.Group()
+    pivot.position.set(-0.29, 0.03975 + i * 0.0015, 0)
+    const page = new THREE.Mesh(new THREE.BoxGeometry(0.585, 0.0012, 0.785), paper)
+    page.position.x = 0.2925 // la page part de la reliure vers la droite
+    pivot.add(page)
+    pages.push(pivot)
+  }
+
+  // Couverture du dessus : elle aussi dans un pivot sur la reliure
+  const cover = new THREE.Group()
+  cover.position.set(-0.31, 0.044, 0)
 
   const topCover = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.012, 0.82), leather)
-  topCover.position.y = 0.048
+  topCover.position.set(0.31, 0.006, 0)
 
-  // Élastique doré
-  const band = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.058, 0.83), gold)
-  band.position.set(0.22, 0.027, 0)
+  // Élastique doré, attaché à la couverture
+  const band = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.014, 0.83), gold)
+  band.position.set(0.53, 0.006, 0)
+
+  // Doublure intérieure (face tournée vers le bas quand le carnet est fermé)
+  const lining = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.6, 0.8),
+    new THREE.MeshStandardMaterial({ map: createNotebookLiningTexture(), roughness: 0.85 })
+  )
+  lining.rotation.x = Math.PI / 2
+  lining.position.set(0.31, -0.0005, 0)
+
+  cover.add(topCover, band, lining)
 
   // Stylo posé à côté
   const pen = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.6, 16), gold)
   pen.rotation.x = Math.PI / 2 // couché sur le bureau
   pen.position.set(0.4, 0.012, 0)
 
-  group.add(bottomCover, pages, topCover, band, pen)
+  group.add(bottomCover, pageBlock, ...pages, cover, pen)
   enableShadows(group)
-  return group
+
+  // On renvoie la couverture et les pages : elles seront animées
+  return { group, cover, pages }
 }
 
 /* ========== LA TASSE ========== */
@@ -262,9 +386,11 @@ export function createMug() {
   ]
   const body = new THREE.Mesh(new THREE.LatheGeometry(profile, 48), ceramic)
 
+  // Le café : un disque découpé en anneaux (RingGeometry) pour pouvoir onduler
+  // (un CircleGeometry n'a des sommets qu'au centre et sur le bord)
   const coffee = new THREE.Mesh(
-    new THREE.CircleGeometry(0.132, 48),
-    new THREE.MeshStandardMaterial({ color: '#2b1a10', roughness: 0.15 })
+    new THREE.RingGeometry(0, 0.132, 64, 24),
+    new THREE.MeshStandardMaterial({ color: '#2b1a10', roughness: 0.12, metalness: 0.1 })
   )
   coffee.rotation.x = -Math.PI / 2 // à plat
   coffee.position.y = 0.25
@@ -284,7 +410,9 @@ export function createMug() {
 
   group.add(body, coffee, handle, rim)
   enableShadows(group)
-  return group
+  coffee.castShadow = false
+  // On renvoie aussi le café : ses vaguelettes seront animées
+  return { group, coffee }
 }
 
 /* ========== LE TÉLÉPHONE ========== */

@@ -9,6 +9,10 @@ import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import GUI from 'lil-gui'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+import { createSmoothScroll } from './scroll.js'
+import { createLiveScreen, createKeyboardAnimator } from './screen.js'
+import { createPostProcessing } from './postprocessing.js'
+import { createNotebookAnimation, createCoffeeRipples } from './details.js'
 import {
   createDesk,
   createMonitor,
@@ -32,11 +36,22 @@ const params = {
   envIntensity: 0.25,
   parallax: 0.25,
   smoothness: 0.05,
+  // Écran : au-delà de 1, il devient assez lumineux pour déclencher le bloom
+  screenGlow: 2,
+  // Bloom
+  bloomStrength: 0.5,
+  bloomRadius: 0.5,
+  bloomThreshold: 1.05, // au-dessus du blanc "normal" : seules les vraies sources brillent
+  // Profondeur de champ
+  aperture: 0.006,
+  maxBlur: 0.008,
 }
 
 /* ========== 1. BASE ========== */
 const canvas = document.querySelector('#webgl')
 const scene = new THREE.Scene()
+// Fond opaque : les effets de post-traitement ont besoin d'une image "pleine"
+scene.background = new THREE.Color('#0a0a0c')
 scene.fog = new THREE.Fog('#0a0a0c', 7, 16) // le lointain se fond dans le noir
 
 const sizes = {
@@ -48,16 +63,18 @@ const sizes = {
 const cameraGroup = new THREE.Group() // chariot : parallaxe + intro
 scene.add(cameraGroup)
 
-const camera = new THREE.PerspectiveCamera(40, sizes.width / sizes.height, 0.1, 50)
+const BASE_FOV = 40 // champ de vision au repos (le vol l'élargit un instant)
+const camera = new THREE.PerspectiveCamera(BASE_FOV, sizes.width / sizes.height, 0.1, 50)
 cameraGroup.add(camera)
 
 // Le point que la caméra regarde (animé par le scroll)
 const lookTarget = new THREE.Vector3()
 
 /* ========== 3. RENDERER ========== */
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
 renderer.setSize(sizes.width, sizes.height)
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+// 1.5 au lieu de 2 : le post-traitement coûte cher, on économise des pixels
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.toneMappingExposure = params.exposure
 renderer.shadowMap.enabled = true // active les ombres
@@ -78,21 +95,29 @@ workshop.add(createDesk())
 workshop.add(createCable())
 
 const keyboard = createKeyboard()
-keyboard.position.set(0, 0, 0.2)
-workshop.add(keyboard)
+keyboard.group.position.set(0, 0, 0.2)
+workshop.add(keyboard.group)
 
-const monitor = createMonitor()
+// L'écran vivant : sa texture est redessinée pendant qu'il "tape"
+const liveScreen = createLiveScreen()
+const monitor = createMonitor(liveScreen.texture)
+
+// À chaque frappe à l'écran, le clavier enfonce une touche
+const keyboardAnimator = createKeyboardAnimator(keyboard)
+liveScreen.onKeystroke(keyboardAnimator.onKeystroke)
 monitor.group.position.set(0, 0, -0.5)
 workshop.add(monitor.group)
 
 const notebook = createNotebook()
-notebook.position.set(-1.3, 0, 0.25)
-notebook.rotation.y = 0.25
-workshop.add(notebook)
+notebook.group.position.set(-1.3, 0, 0.25)
+notebook.group.rotation.y = 0.25
+workshop.add(notebook.group)
+const notebookAnimation = createNotebookAnimation(notebook)
 
 const mug = createMug()
-mug.position.set(1.3, 0, -0.35)
-workshop.add(mug)
+mug.group.position.set(1.3, 0, -0.35)
+workshop.add(mug.group)
+const coffeeRipples = createCoffeeRipples(mug.coffee)
 
 const phone = createPhone()
 phone.position.set(0.95, 0, 0.55)
@@ -108,8 +133,8 @@ workshop.add(lamp.group)
 // Chaque objet cliquable est relié à une section du site
 const items = [
   { name: 'Projets', stop: 1, object: monitor.group, labelHeight: 1.25 },
-  { name: 'Parcours', stop: 2, object: notebook, labelHeight: 0.25 },
-  { name: 'Moi', stop: 3, object: mug, labelHeight: 0.5 },
+  { name: 'Parcours', stop: 2, object: notebook.group, labelHeight: 0.25 },
+  { name: 'Moi', stop: 3, object: mug.group, labelHeight: 0.5 },
   { name: 'Contact', stop: 4, object: phone, labelHeight: 0.2 },
 ]
 
@@ -191,9 +216,11 @@ const stops = [
   // 1. L'écran
   makeStop({ x: 0, y: 0.72, z: -0.5 }, { distance: 2.4, height: 0.15, shift: 0.65 }),
   // 2. Le carnet
-  makeStop({ x: -1.3, y: 0.05, z: 0.25 }, { distance: 1.5, height: 1.2, shift: 0.5 }),
+  // (visé un peu à gauche : une fois ouvert, le carnet est deux fois plus large)
+  makeStop({ x: -1.55, y: 0.05, z: 0.3 }, { distance: 1.4, height: 1.6, shift: 0.5 }),
   // 3. La tasse
-  makeStop({ x: 1.3, y: 0.18, z: -0.35 }, { distance: 1.0, height: 0.35, shift: 0.3 }),
+  // (vue plus plongeante : on voit la surface du café)
+  makeStop({ x: 1.3, y: 0.2, z: -0.35 }, { distance: 0.85, height: 0.75, shift: 0.3 }),
   // 4. Le téléphone
   makeStop({ x: 0.95, y: 0.02, z: 0.55 }, { distance: 0.9, height: 0.8, shift: 0.3 }),
 ]
@@ -210,12 +237,15 @@ camera.position.copy(rail.position)
 lookTarget.copy(rail.target)
 
 /* ========== 9. SCROLL : LA VISITE GUIDÉE ========== */
+// Scroll fluide : c'est Lenis qui lisse le mouvement désormais
+const lenis = createSmoothScroll()
+
 const tour = gsap.timeline({
   scrollTrigger: {
     trigger: '.content',
     start: 'top top',
     end: 'bottom bottom',
-    scrub: 1.2,
+    scrub: true, // plus besoin de lissage ici : Lenis s'en charge
   },
 })
 
@@ -224,6 +254,12 @@ for (let i = 1; i < stops.length; i++) {
   tour
     .to(rail.position, { ...stops[i].position, ease: 'power2.inOut' })
     .to(rail.target, { ...stops[i].target, ease: 'power2.inOut' }, '<')
+}
+
+// Ce qui se passe quand on entre dans une section, ou qu'on la quitte
+const sectionEvents = {
+  parcours: { enter: notebookAnimation.open, leave: notebookAnimation.close },
+  perso: { enter: () => coffeeRipples.splash() },
 }
 
 // Chaque section affiche son panneau et allume son lien du menu
@@ -238,6 +274,11 @@ document.querySelectorAll('.section').forEach((section) => {
     onToggle: (self) => {
       panel.classList.toggle('is-visible', self.isActive)
       if (link) link.classList.toggle('is-active', self.isActive)
+
+      // Événement propre à la section (carnet, café...), s'il y en a un
+      const events = sectionEvents[section.id]
+      if (events && self.isActive && events.enter) events.enter()
+      if (events && !self.isActive && events.leave) events.leave()
     },
   })
 })
@@ -278,7 +319,7 @@ function pickItem() {
 
 /* ========== 12. VOL DIRECT VERS UN OBJET ========== */
 const sections = document.querySelectorAll('.section') // dans le même ordre que stops
-const flight = { progress: 0, tween: null } // null = pas de vol en cours
+const flight = { progress: 0, tween: null, roll: 0 } // null = pas de vol en cours
 const flightStart = { position: new THREE.Vector3(), target: new THREE.Vector3() }
 const flightEnd = { position: new THREE.Vector3(), target: new THREE.Vector3() }
 
@@ -292,32 +333,52 @@ function flyTo(stopIndex) {
   flightEnd.target.set(stop.target.x, stop.target.y, stop.target.z)
 
   // 2. Hauteur de l'arc : plus le trajet est long, plus la caméra monte
-  const arcHeight = flightStart.position.distanceTo(flightEnd.position) * 0.15
+  const travel = flightStart.position.distanceTo(flightEnd.position)
+  const arcHeight = travel * 0.15
 
-  // 3. Si un vol est déjà en cours, on l'arrête avant d'en lancer un autre
+  // 3. Durée : un long trajet prend plus de temps (entre 1,4 s et 2,4 s)
+  const duration = THREE.MathUtils.clamp(1.2 + travel * 0.25, 1.4, 2.4)
+
+  // 4. Inclinaison dans le virage (comme un avion) : on regarde si le trajet
+  //    part vers la droite ou vers la gauche de l'écran
+  const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0) // axe "droite" de la caméra
+  const sideways = flightEnd.position.clone().sub(flightStart.position).dot(right)
+  const bank = THREE.MathUtils.clamp(sideways / 2, -1, 1) * 0.07 // 4° maximum
+
+  // 5. Si un vol est déjà en cours, on l'arrête avant d'en lancer un autre
   if (flight.tween) flight.tween.kill()
   flight.progress = 0
 
   flight.tween = gsap.to(flight, {
     progress: 1,
-    duration: 1.8,
+    duration,
     ease: 'power3.inOut',
     onUpdate: () => {
       const p = flight.progress
+      const middle = Math.sin(p * Math.PI) // 0 au départ, 1 à mi-chemin, 0 à l'arrivée
+
       // Mélange entre départ (p = 0) et arrivée (p = 1)
       camera.position.lerpVectors(flightStart.position, flightEnd.position, p)
       lookTarget.lerpVectors(flightStart.target, flightEnd.target, p)
-      // L'arc : 0 au départ, maximum à mi-chemin, 0 à l'arrivée
-      camera.position.y += Math.sin(p * Math.PI) * arcHeight
+
+      camera.position.y += middle * arcHeight // l'arc
+      flight.roll = -middle * bank // l'inclinaison (appliquée dans la boucle)
+
+      // Le champ de vision s'élargit en plein vol : sensation de vitesse
+      camera.fov = BASE_FOV + middle * 7
+      camera.updateProjectionMatrix()
     },
     onComplete: () => {
       flight.tween = null // la caméra se remet à suivre le rail
+      flight.roll = 0
+      camera.fov = BASE_FOV
+      camera.updateProjectionMatrix()
     },
   })
 
-  // 4. On saute INSTANTANÉMENT à la section : le rail s'y place pendant le vol,
+  // 6. On saute INSTANTANÉMENT à la section : le rail s'y place pendant le vol,
   //    sans que la caméra ne traverse les autres objets
-  window.scrollTo({ top: sections[stopIndex].offsetTop, behavior: 'instant' })
+  lenis.scrollTo(sections[stopIndex], { immediate: true })
 }
 
 // Si le visiteur scrolle lui-même pendant un vol, il reprend la main
@@ -325,6 +386,9 @@ function cancelFlight() {
   if (flight.tween) {
     flight.tween.kill()
     flight.tween = null
+    flight.roll = 0
+    camera.fov = BASE_FOV
+    camera.updateProjectionMatrix()
   }
 }
 window.addEventListener('wheel', cancelFlight, { passive: true })
@@ -334,7 +398,9 @@ window.addEventListener('touchstart', cancelFlight, { passive: true })
 window.addEventListener('click', (event) => {
   updatePointer(event)
   const item = pickItem()
-  if (item) flyTo(item.stop)
+  if (!item) return
+  flyTo(item.stop)
+  if (item.object === mug.group) coffeeRipples.splash() // une goutte dans le café !
 })
 
 // Liens du menu (et logo) -> vol direct aussi
@@ -362,7 +428,11 @@ intro
   // Le texte d'intro apparaît élément par élément
   .from('.intro > *', { y: 30, opacity: 0, duration: 0.9, stagger: 0.1, ease: 'power3.out' }, 1)
 
-/* ========== 14. REDIMENSIONNEMENT ========== */
+/* ========== 14. POST-TRAITEMENT : BLOOM ET PROFONDEUR DE CHAMP ========== */
+const post = createPostProcessing({ renderer, scene, camera, sizes, params })
+let focusDistance = 5 // distance de mise au point actuelle (lissée)
+
+/* ========== 14 bis. REDIMENSIONNEMENT ========== */
 window.addEventListener('resize', () => {
   sizes.width = window.innerWidth
   sizes.height = window.innerHeight
@@ -371,12 +441,14 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix()
 
   renderer.setSize(sizes.width, sizes.height)
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
+  post.resize()
 })
 
 /* ========== 15. BOUCLE D'ANIMATION ========== */
 const label = document.querySelector('.label')
 const tempVector = new THREE.Vector3() // vecteur réutilisé pour les calculs
+const focusVector = new THREE.Vector3() // point de mise au point
 let previousTime = 0
 
 renderer.setAnimationLoop((time) => {
@@ -421,28 +493,47 @@ renderer.setAnimationLoop((time) => {
   const proximity = THREE.MathUtils.clamp(1 - distance / 1.2, 0, 1)
   const targetIntensity = params.screenLight * (0.5 + proximity * 1.5)
   screenLight.intensity += (targetIntensity - screenLight.intensity) * 0.08
-  monitor.screen.material.color.setScalar(0.7 + proximity * 0.3)
+  // Au-delà de 1, l'écran est "surexposé" : le bloom le fait rayonner
+  monitor.screen.material.color.setScalar(params.screenGlow * (0.75 + proximity * 0.35))
 
   // f) L'ampoule brille au même rythme que le faisceau
   lamp.bulbMaterial.emissiveIntensity = (lamp.spotLight.intensity / params.lampIntensity) * 4
 
-  // g) La poussière tourne doucement
+  // g) L'écran tape, le clavier suit
+  liveScreen.update(delta)
+  keyboardAnimator.update(delta)
+
+  // g bis) Le café ondule
+  coffeeRipples.update(elapsed)
+
+  // g ter) La poussière tourne doucement
   dust.rotation.y += delta * 0.03
 
   // h) Parallaxe : le chariot de la caméra suit la souris
   cameraGroup.position.x += (cursor.x * params.parallax - cameraGroup.position.x) * params.smoothness
   cameraGroup.position.y += (-cursor.y * params.parallax - cameraGroup.position.y) * params.smoothness
 
-  // i) Hors vol, la caméra rejoint le rail en douceur (lerp)
+  // i) Hors vol, la caméra rejoint le rail en douceur.
+  //    1 - exp(-delta × vitesse) : même douceur à 30, 60 ou 144 images/seconde
   if (!flight.tween) {
-    camera.position.lerp(rail.position, 0.1)
-    lookTarget.lerp(rail.target, 0.1)
+    const follow = 1 - Math.exp(-delta * 7)
+    camera.position.lerp(rail.position, follow)
+    lookTarget.lerp(rail.target, follow)
   }
 
-  // j) La caméra regarde toujours sa cible
+  // j) La caméra regarde sa cible, puis s'incline pendant les vols
   camera.lookAt(lookTarget)
+  camera.rotateZ(flight.roll)
 
-  renderer.render(scene, camera)
+  // k) Mise au point automatique : sur l'objet survolé, sinon sur ce que la caméra regarde
+  camera.getWorldPosition(tempVector)
+  const focusPoint = hovered ? hovered.object.getWorldPosition(focusVector) : lookTarget
+  const targetFocus = tempVector.distanceTo(focusPoint)
+  focusDistance += (targetFocus - focusDistance) * (1 - Math.exp(-delta * 5))
+  post.setFocus(focusDistance)
+
+  // l) Rendu à travers les calques de post-traitement
+  post.render()
 })
 
 /* ========== 16. PANNEAU DE RÉGLAGES (développement uniquement) ========== */
@@ -475,6 +566,18 @@ if (import.meta.env.DEV) {
       scene.environmentIntensity = value
     })
   gui.add(params, 'parallax', 0, 1, 0.01).name('Parallaxe')
+  gui.add(params, 'screenGlow', 0.5, 3, 0.01).name('Éclat écran')
+
+  const bloomFolder = gui.addFolder('Bloom')
+  bloomFolder.add(post.bloomPass, 'enabled').name('Activé')
+  bloomFolder.add(post.bloomPass, 'strength', 0, 2, 0.01).name('Force')
+  bloomFolder.add(post.bloomPass, 'radius', 0, 1, 0.01).name('Étalement')
+  bloomFolder.add(post.bloomPass, 'threshold', 0, 2, 0.01).name('Seuil')
+
+  const dofFolder = gui.addFolder('Profondeur de champ')
+  dofFolder.add(post.bokehPass, 'enabled').name('Activée')
+  dofFolder.add(post.bokehPass.uniforms.aperture, 'value', 0, 0.03, 0.0005).name('Ouverture')
+  dofFolder.add(post.bokehPass.uniforms.maxblur, 'value', 0, 0.02, 0.0005).name('Flou max')
 
   // Touche H : afficher ou cacher le panneau
   let guiVisible = true
