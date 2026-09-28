@@ -26,7 +26,11 @@ import {
 
 gsap.registerPlugin(ScrollTrigger)
 
-/* ========== 0. PARAMÈTRES ========== */
+/* ========== 0. APPAREIL ========== */
+// "pointer: coarse" = écran tactile (téléphone, tablette) : on allège les effets
+const isTouch = window.matchMedia('(pointer: coarse)').matches
+
+/* ========== 0 bis. PARAMÈTRES ========== */
 const params = {
   lampIntensity: 25,
   lampColor: '#ffd9a0',
@@ -34,7 +38,7 @@ const params = {
   screenLight: 3,
   exposure: 1.1,
   envIntensity: 0.25,
-  parallax: 0.25,
+  parallax: isTouch ? 0 : 0.25, // pas de parallaxe au doigt : elle gênerait le scroll
   smoothness: 0.05,
   // Écran : au-delà de 1, il devient assez lumineux pour déclencher le bloom
   screenGlow: 2,
@@ -63,8 +67,9 @@ const sizes = {
 const cameraGroup = new THREE.Group() // chariot : parallaxe + intro
 scene.add(cameraGroup)
 
-const BASE_FOV = 40 // champ de vision au repos (le vol l'élargit un instant)
-const camera = new THREE.PerspectiveCamera(BASE_FOV, sizes.width / sizes.height, 0.1, 50)
+// Champ de vision vertical au repos : plus large en portrait, car l'écran est étroit
+const baseFov = () => (sizes.width / sizes.height < 1 ? 55 : 40)
+const camera = new THREE.PerspectiveCamera(baseFov(), sizes.width / sizes.height, 0.1, 50)
 cameraGroup.add(camera)
 
 // Le point que la caméra regarde (animé par le scroll)
@@ -73,8 +78,9 @@ const lookTarget = new THREE.Vector3()
 /* ========== 3. RENDERER ========== */
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
 renderer.setSize(sizes.width, sizes.height)
-// 1.5 au lieu de 2 : le post-traitement coûte cher, on économise des pixels
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
+// Le post-traitement coûte cher : on limite le nombre de pixels (encore plus sur mobile)
+const maxPixelRatio = isTouch ? 1.25 : 1.5
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxPixelRatio))
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.toneMappingExposure = params.exposure
 renderer.shadowMap.enabled = true // active les ombres
@@ -200,36 +206,67 @@ const dust = new THREE.Points(
 )
 scene.add(dust)
 
-/* ========== 8. LES ARRÊTS DE LA CAMÉRA ========== */
-// Crée un point de vue : la caméra se place devant la cible,
-// décalée vers la gauche (shift) pour laisser la place au texte
-function makeStop(target, { distance, height, shift }) {
-  return {
-    position: { x: target.x - shift, y: target.y + height, z: target.z + distance },
-    target: { x: target.x - shift, y: target.y, z: target.z },
-  }
+/* ========== 8. LES ARRÊTS DE LA CAMÉRA (CADRAGE ADAPTATIF) ========== */
+// Chaque arrêt est décrit par CE QU'ON VEUT VOIR, pas par une position de caméra :
+// - center : le centre de l'objet
+// - radius : sa "taille" (le rayon de la sphère qui l'englobe)
+// - direction : d'où on le regarde (vers l'avant, un peu au-dessus...)
+// La position exacte de la caméra est ensuite CALCULÉE selon la forme de l'écran.
+const STOP_DEFINITIONS = [
+  // (en portrait, on accepte que les bords du bureau frôlent l'écran : il paraît plus grand)
+  { name: "Vue d'ensemble", center: [0, 0.35, 0], radius: 2.0, radiusPortrait: 1.7, direction: [0, 0.38, 1] },
+  { name: "L'écran", center: [0, 0.72, -0.5], radius: 0.8, direction: [0, 0.06, 1] },
+  // Carnet : visé à gauche, car une fois ouvert il est deux fois plus large
+  { name: 'Le carnet', center: [-1.55, 0.05, 0.3], radius: 0.7, direction: [0, 1.15, 1] },
+  // Tasse : vue plongeante pour voir la surface du café
+  { name: 'La tasse', center: [1.3, 0.2, -0.35], radius: 0.38, direction: [0, 0.88, 1] },
+  { name: 'Le téléphone', center: [0.95, 0.02, 0.55], radius: 0.4, direction: [0, 0.9, 1] },
+]
+
+const WORLD_UP = new THREE.Vector3(0, 1, 0)
+const stops = STOP_DEFINITIONS.map(() => ({ position: new THREE.Vector3(), target: new THREE.Vector3() }))
+
+function computeStops() {
+  const aspect = sizes.width / sizes.height
+  const portrait = aspect < 1
+
+  // Demi-ouverture de la caméra, en hauteur et en largeur (sous forme de tangente)
+  const tanHalfV = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)
+  const tanHalfH = tanHalfV * aspect
+  const tanHalfMin = Math.min(tanHalfV, tanHalfH) // le côté le plus étroit de l'écran
+
+  STOP_DEFINITIONS.forEach((definition, i) => {
+    const center = new THREE.Vector3(...definition.center)
+    const direction = new THREE.Vector3(...definition.direction).normalize()
+
+    // 1. Distance pour que l'objet tienne dans le côté le plus étroit (+10 % de marge)
+    const radius = portrait && definition.radiusPortrait ? definition.radiusPortrait : definition.radius
+    const distance = (radius / tanHalfMin) * 1.1
+
+    // 2. Les axes "droite" et "haut" de la caméra qui regardera l'objet
+    const forward = direction.clone().negate()
+    const right = new THREE.Vector3().crossVectors(forward, WORLD_UP).normalize()
+    const up = new THREE.Vector3().crossVectors(right, forward)
+
+    // 3. Décalage pour laisser la place au texte :
+    //    - écran large : le texte est à gauche, on pousse l'objet vers la droite
+    //    - portrait : le texte est en bas, on pousse l'objet vers le haut
+    const offset = portrait
+      ? up.multiplyScalar(-distance * tanHalfV * 0.42)
+      : right.multiplyScalar(-distance * tanHalfH * 0.4)
+
+    stops[i].target.copy(center).add(offset)
+    stops[i].position.copy(center).addScaledVector(direction, distance).add(offset)
+  })
 }
 
-const stops = [
-  // 0. Vue d'ensemble
-  { position: { x: -1, y: 2.4, z: 5.6 }, target: { x: -1, y: 0.3, z: 0 } },
-  // 1. L'écran
-  makeStop({ x: 0, y: 0.72, z: -0.5 }, { distance: 2.4, height: 0.15, shift: 0.65 }),
-  // 2. Le carnet
-  // (visé un peu à gauche : une fois ouvert, le carnet est deux fois plus large)
-  makeStop({ x: -1.55, y: 0.05, z: 0.3 }, { distance: 1.4, height: 1.6, shift: 0.5 }),
-  // 3. La tasse
-  // (vue plus plongeante : on voit la surface du café)
-  makeStop({ x: 1.3, y: 0.2, z: -0.35 }, { distance: 0.85, height: 0.75, shift: 0.3 }),
-  // 4. Le téléphone
-  makeStop({ x: 0.95, y: 0.02, z: 0.55 }, { distance: 0.9, height: 0.8, shift: 0.3 }),
-]
+computeStops()
 
 // Le "rail" : un point de vue invisible que le scroll déplace.
 // La caméra le suit, SAUF pendant un vol direct (clic sur un objet).
 const rail = {
-  position: new THREE.Vector3(stops[0].position.x, stops[0].position.y, stops[0].position.z),
-  target: new THREE.Vector3(stops[0].target.x, stops[0].target.y, stops[0].target.z),
+  position: stops[0].position.clone(),
+  target: stops[0].target.clone(),
 }
 
 // Position de départ de la caméra = premier arrêt
@@ -240,7 +277,13 @@ lookTarget.copy(rail.target)
 // Scroll fluide : c'est Lenis qui lisse le mouvement désormais
 const lenis = createSmoothScroll()
 
-const tour = gsap.timeline({
+// Le scroll anime un simple nombre : 0 = premier arrêt, 4 = dernier arrêt.
+// Le rail en est déduit à chaque image (voir updateRail) : ainsi, si les arrêts
+// sont recalculés (rotation du téléphone...), rien n'est à reconstruire.
+const tour = { progress: 0 }
+gsap.to(tour, {
+  progress: stops.length - 1,
+  ease: 'none',
   scrollTrigger: {
     trigger: '.content',
     start: 'top top',
@@ -249,11 +292,14 @@ const tour = gsap.timeline({
   },
 })
 
-// Une étape par arrêt : le rail (position ET regard) avance avec le scroll
-for (let i = 1; i < stops.length; i++) {
-  tour
-    .to(rail.position, { ...stops[i].position, ease: 'power2.inOut' })
-    .to(rail.target, { ...stops[i].target, ease: 'power2.inOut' }, '<')
+const easeInOut = gsap.parseEase('power2.inOut') // la courbe de GSAP, utilisable comme une fonction
+
+function updateRail() {
+  const last = stops.length - 1
+  const index = Math.min(Math.floor(tour.progress), last - 1) // arrêt de départ
+  const t = easeInOut(tour.progress - index) // avancement entre les deux arrêts (0 à 1), adouci
+  rail.position.lerpVectors(stops[index].position, stops[index + 1].position, t)
+  rail.target.lerpVectors(stops[index].target, stops[index + 1].target, t)
 }
 
 // Ce qui se passe quand on entre dans une section, ou qu'on la quitte
@@ -329,8 +375,8 @@ function flyTo(stopIndex) {
   // 1. On mémorise le départ (où est la caméra) et l'arrivée (l'arrêt choisi)
   flightStart.position.copy(camera.position)
   flightStart.target.copy(lookTarget)
-  flightEnd.position.set(stop.position.x, stop.position.y, stop.position.z)
-  flightEnd.target.set(stop.target.x, stop.target.y, stop.target.z)
+  flightEnd.position.copy(stop.position)
+  flightEnd.target.copy(stop.target)
 
   // 2. Hauteur de l'arc : plus le trajet est long, plus la caméra monte
   const travel = flightStart.position.distanceTo(flightEnd.position)
@@ -365,13 +411,13 @@ function flyTo(stopIndex) {
       flight.roll = -middle * bank // l'inclinaison (appliquée dans la boucle)
 
       // Le champ de vision s'élargit en plein vol : sensation de vitesse
-      camera.fov = BASE_FOV + middle * 7
+      camera.fov = baseFov() + middle * 7
       camera.updateProjectionMatrix()
     },
     onComplete: () => {
       flight.tween = null // la caméra se remet à suivre le rail
       flight.roll = 0
-      camera.fov = BASE_FOV
+      camera.fov = baseFov()
       camera.updateProjectionMatrix()
     },
   })
@@ -387,7 +433,7 @@ function cancelFlight() {
     flight.tween.kill()
     flight.tween = null
     flight.roll = 0
-    camera.fov = BASE_FOV
+    camera.fov = baseFov()
     camera.updateProjectionMatrix()
   }
 }
@@ -398,6 +444,8 @@ window.addEventListener('touchstart', cancelFlight, { passive: true })
 window.addEventListener('click', (event) => {
   updatePointer(event)
   const item = pickItem()
+  // Au doigt, il n'y a pas de survol : on "retire" le pointeur après le tap
+  if (isTouch) pointer.set(10, 10)
   if (!item) return
   flyTo(item.stop)
   if (item.object === mug.group) coffeeRipples.splash() // une goutte dans le café !
@@ -429,7 +477,7 @@ intro
   .from('.intro > *', { y: 30, opacity: 0, duration: 0.9, stagger: 0.1, ease: 'power3.out' }, 1)
 
 /* ========== 14. POST-TRAITEMENT : BLOOM ET PROFONDEUR DE CHAMP ========== */
-const post = createPostProcessing({ renderer, scene, camera, sizes, params })
+const post = createPostProcessing({ renderer, scene, camera, sizes, params, lowPower: isTouch })
 let focusDistance = 5 // distance de mise au point actuelle (lissée)
 
 /* ========== 14 bis. REDIMENSIONNEMENT ========== */
@@ -441,8 +489,13 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix()
 
   renderer.setSize(sizes.width, sizes.height)
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxPixelRatio))
   post.resize()
+
+  // Le cadrage dépend de la forme de l'écran : on recalcule tout
+  camera.fov = baseFov()
+  camera.updateProjectionMatrix()
+  computeStops()
 })
 
 /* ========== 15. BOUCLE D'ANIMATION ========== */
@@ -513,7 +566,8 @@ renderer.setAnimationLoop((time) => {
   cameraGroup.position.x += (cursor.x * params.parallax - cameraGroup.position.x) * params.smoothness
   cameraGroup.position.y += (-cursor.y * params.parallax - cameraGroup.position.y) * params.smoothness
 
-  // i) Hors vol, la caméra rejoint le rail en douceur.
+  // i) Le rail suit le scroll, et hors vol, la caméra le rejoint en douceur.
+  updateRail()
   //    1 - exp(-delta × vitesse) : même douceur à 30, 60 ou 144 images/seconde
   if (!flight.tween) {
     const follow = 1 - Math.exp(-delta * 7)

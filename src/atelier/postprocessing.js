@@ -11,12 +11,13 @@ import { BokehPass } from 'three/addons/postprocessing/BokehPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 
-export function createPostProcessing({ renderer, scene, camera, sizes, params }) {
+// lowPower : sur téléphone, on allège (moins d'anti-crénelage, pas de profondeur de champ)
+export function createPostProcessing({ renderer, scene, camera, sizes, params, lowPower = false }) {
   // Image intermédiaire en haute précision (HalfFloat) pour garder les lumières
   // très fortes (> 1) dont le bloom a besoin, avec anti-crénelage (samples: 4)
   const renderTarget = new THREE.WebGLRenderTarget(sizes.width, sizes.height, {
     type: THREE.HalfFloatType,
-    samples: 4,
+    samples: lowPower ? 2 : 4,
   })
 
   const composer = new EffectComposer(renderer, renderTarget)
@@ -43,6 +44,9 @@ export function createPostProcessing({ renderer, scene, camera, sizes, params })
 
   // Calque 4 : conversion finale des couleurs pour l'écran (tone mapping + sRGB)
   const outputPass = new OutputPass()
+
+  // La profondeur de champ redessine toute la scène une 2e fois : trop lourd pour un téléphone
+  bokehPass.enabled = !lowPower
 
   composer.addPass(renderPass)
   composer.addPass(bokehPass)
