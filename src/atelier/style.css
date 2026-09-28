@@ -296,6 +296,107 @@ h2 {
   box-shadow: 0 10px 30px rgba(212, 175, 55, 0.3);
 }
 
+/* ========== FORMULAIRE DE CONTACT ========== */
+.contact-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 1.2rem;
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+}
+
+.field span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+  transition: border-color 0.3s, background 0.3s;
+}
+
+/* Champ actif : bordure dorée */
+.field input:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--gold);
+  background: rgba(212, 175, 55, 0.06);
+}
+
+/* Le piège à robots est retiré de l'affichage */
+.botcheck {
+  display: none;
+}
+
+.contact-form .button {
+  justify-self: start;
+  margin-top: 4px;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.contact-form .button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.form-status {
+  min-height: 1.2em;
+  font-size: 0.85rem;
+}
+
+.form-status[data-type='success'] {
+  color: #7ddc8a;
+}
+
+.form-status[data-type='error'] {
+  color: #ff8a80;
+}
+
+.panel .contact-alt {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.contact-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 0.6rem;
+}
+
+.contact-chips a {
+  padding: 6px 14px;
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  border-radius: 999px;
+  color: var(--gold);
+  font-size: 0.8rem;
+  text-decoration: none;
+  transition: background 0.3s;
+}
+
+.contact-chips a:hover {
+  background: rgba(212, 175, 55, 0.12);
+}
+
 /* ========== ÉTIQUETTE DE SURVOL ========== */
 .label {
   position: fixed;
@@ -320,8 +421,7 @@ h2 {
   opacity: 1;
 }
 
-/* ========== MOBILE (PORTRAIT) ========== */
-/* La 3D occupe le haut de l'écran, le texte une "feuille" en bas */
+/* ========== PETITS ÉCRANS : BARRE DU HAUT ========== */
 @media (max-width: 768px) {
   .topbar {
     padding: 14px 16px;
@@ -341,7 +441,12 @@ h2 {
     font-size: 0.62rem;
     letter-spacing: 0.08em;
   }
+}
 
+/* ========== TÉLÉPHONE EN PORTRAIT ==========
+   Même règle que la caméra dans main.js (largeur < hauteur) :
+   la 3D occupe le haut de l'écran, le texte une "feuille" en bas */
+@media (max-width: 768px) and (orientation: portrait) {
   .section {
     min-height: 100svh; /* "small viewport" : tient compte de la barre d'adresse du navigateur */
     align-items: flex-end;
@@ -410,20 +515,51 @@ h2 {
   }
 }
 
-/* ========== TÉLÉPHONE À L'HORIZONTALE (écran peu haut) ========== */
-@media (max-height: 560px) and (min-width: 769px) {
+/* ========== ÉCRAN LARGE MAIS PEU HAUT (téléphone à l'horizontale) ==========
+   Comme sur ordinateur : texte à gauche, 3D à droite, mais en plus compact */
+@media (orientation: landscape) and (max-height: 560px) {
+  .section {
+    padding: 0 4vw;
+  }
+
+  .topbar {
+    padding: 12px 4vw;
+  }
+
   .panel {
-    max-height: 82svh;
+    width: min(380px, 46vw);
+    max-height: 78svh;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 22px;
+    padding: 20px;
+  }
+
+  .panel.intro {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .tag {
+    font-size: 0.62rem;
+    margin-bottom: 0.5rem;
   }
 
   h1 {
-    font-size: 2.6rem;
+    font-size: 2.2rem;
+    margin-bottom: 0.6rem;
   }
 
   h2 {
-    font-size: 1.7rem;
+    font-size: 1.5rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .panel p {
+    font-size: 0.82rem;
+    line-height: 1.5;
+  }
+
+  .panel .hint {
+    margin-top: 0.8rem;
   }
 }

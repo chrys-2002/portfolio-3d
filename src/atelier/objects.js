@@ -435,7 +435,8 @@ export function createPhone() {
   group.add(body, screen)
   enableShadows(group)
   screen.castShadow = false
-  return group
+  // On renvoie aussi l'écran : il réagira au formulaire de contact
+  return { group, screen }
 }
 
 /* ========== LE CÂBLE DE L'ÉCRAN ========== */

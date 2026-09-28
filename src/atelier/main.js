@@ -13,6 +13,8 @@ import { createSmoothScroll } from './scroll.js'
 import { createLiveScreen, createKeyboardAnimator } from './screen.js'
 import { createPostProcessing } from './postprocessing.js'
 import { createNotebookAnimation, createCoffeeRipples } from './details.js'
+import { createBusinessCard } from './card.js'
+import { createPhoneScreen, createPaperPlane, createContactForm } from './contactForm.js'
 import {
   createDesk,
   createMonitor,
@@ -126,9 +128,17 @@ workshop.add(mug.group)
 const coffeeRipples = createCoffeeRipples(mug.coffee)
 
 const phone = createPhone()
-phone.position.set(0.95, 0, 0.55)
-phone.rotation.y = -0.3
-workshop.add(phone)
+phone.group.position.set(0.95, 0, 0.55)
+phone.group.rotation.y = -0.3
+workshop.add(phone.group)
+
+// La carte de visite, cachée dans le téléphone jusqu'à la section Contact
+const businessCard = createBusinessCard({ phone: phone.group })
+workshop.add(businessCard.group)
+
+// L'écran du téléphone réagit au formulaire, l'avion en papier attend son heure
+const phoneScreen = createPhoneScreen(phone.screen)
+const paperPlane = createPaperPlane(scene)
 
 const lamp = createLamp()
 lamp.group.position.set(-1.75, 0, -0.65)
@@ -141,7 +151,7 @@ const items = [
   { name: 'Projets', stop: 1, object: monitor.group, labelHeight: 1.25 },
   { name: 'Parcours', stop: 2, object: notebook.group, labelHeight: 0.25 },
   { name: 'Moi', stop: 3, object: mug.group, labelHeight: 0.5 },
-  { name: 'Contact', stop: 4, object: phone, labelHeight: 0.2 },
+  { name: 'Contact', stop: 4, object: phone.group, labelHeight: 0.2 },
 ]
 
 items.forEach((item, index) => {
@@ -220,7 +230,8 @@ const STOP_DEFINITIONS = [
   { name: 'Le carnet', center: [-1.55, 0.05, 0.3], radius: 0.7, direction: [0, 1.15, 1] },
   // Tasse : vue plongeante pour voir la surface du café
   { name: 'La tasse', center: [1.3, 0.2, -0.35], radius: 0.38, direction: [0, 0.88, 1] },
-  { name: 'Le téléphone', center: [0.95, 0.02, 0.55], radius: 0.4, direction: [0, 0.9, 1] },
+  // Téléphone : cadrage plus large, pour voir aussi la carte de visite qui en sort
+  { name: 'Le téléphone', center: [1.0, 0.3, 0.3], radius: 0.72, direction: [0, 0.75, 1] },
 ]
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0)
@@ -306,6 +317,7 @@ function updateRail() {
 const sectionEvents = {
   parcours: { enter: notebookAnimation.open, leave: notebookAnimation.close },
   perso: { enter: () => coffeeRipples.splash() },
+  contact: { enter: businessCard.show, leave: businessCard.hide },
 }
 
 // Chaque section affiche son panneau et allume son lien du menu
@@ -440,9 +452,25 @@ function cancelFlight() {
 window.addEventListener('wheel', cancelFlight, { passive: true })
 window.addEventListener('touchstart', cancelFlight, { passive: true })
 
+// Un clic sur l'interface (panneau, menu, formulaire) ne doit pas toucher la 3D derrière
+const isInterface = (event) => event.target.closest('.panel, .topbar, a, button, input, textarea, label')
+
+// Carte de visite : on l'attrape, on la fait tourner, on la relâche
+window.addEventListener('pointerdown', (event) => {
+  if (isInterface(event)) return
+  updatePointer(event)
+  raycaster.setFromCamera(pointer, camera)
+  businessCard.pointerDown(event, raycaster)
+})
+window.addEventListener('pointermove', (event) => businessCard.pointerMove(event))
+window.addEventListener('pointerup', () => businessCard.pointerUp())
+
 // Clic sur un objet 3D -> vol direct
 window.addEventListener('click', (event) => {
+  if (isInterface(event)) return
   updatePointer(event)
+  raycaster.setFromCamera(pointer, camera)
+  if (businessCard.isHit(raycaster)) return // la carte gère son propre clic (se retourner)
   const item = pickItem()
   // Au doigt, il n'y a pas de survol : on "retire" le pointeur après le tap
   if (isTouch) pointer.set(10, 10)
@@ -475,6 +503,25 @@ intro
   .to(lamp.spotLight, { intensity: params.lampIntensity, duration: 0.5, ease: 'power2.out' })
   // Le texte d'intro apparaît élément par élément
   .from('.intro > *', { y: 30, opacity: 0, duration: 0.9, stagger: 0.1, ease: 'power3.out' }, 1)
+
+/* ========== 13 bis. FORMULAIRE DE CONTACT ========== */
+createContactForm({
+  form: document.querySelector('.contact-form'),
+  status: document.querySelector('.form-status'),
+  onStateChange: (state, details) => {
+    phoneScreen.show(state, details)
+
+    if (state === 'sent') {
+      // L'avion en papier décolle du téléphone
+      const start = phone.group.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0.06, 0))
+      paperPlane.fly(start)
+    }
+    // Après un succès ou une erreur, le téléphone revient à son écran de repos
+    if (state === 'sent' || state === 'error') {
+      gsap.delayedCall(6, () => phoneScreen.show('idle'))
+    }
+  },
+})
 
 /* ========== 14. POST-TRAITEMENT : BLOOM ET PROFONDEUR DE CHAMP ========== */
 const post = createPostProcessing({ renderer, scene, camera, sizes, params, lowPower: isTouch })
@@ -513,8 +560,10 @@ renderer.setAnimationLoop((time) => {
   workshop.position.y = Math.sin(elapsed * 0.5) * 0.04
 
   // b) Survol : quel objet est sous la souris ?
-  const hovered = pickItem()
-  document.body.style.cursor = hovered ? 'pointer' : ''
+  let hovered = pickItem()
+  const overCard = businessCard.isHit(raycaster) // pickItem vient de positionner le rayon
+  if (overCard) hovered = null // la carte est devant : on ne soulève pas le téléphone derrière
+  document.body.style.cursor = businessCard.isDragging() ? 'grabbing' : overCard ? 'grab' : hovered ? 'pointer' : ''
 
   // c) Chaque objet flotte, et se soulève quand on le survole
   items.forEach((item) => {
@@ -556,7 +605,10 @@ renderer.setAnimationLoop((time) => {
   liveScreen.update(delta)
   keyboardAnimator.update(delta)
 
-  // g bis) Le café ondule
+  // g bis) La carte de visite flotte
+  businessCard.update(elapsed)
+
+  // g ter) Le café ondule
   coffeeRipples.update(elapsed)
 
   // g ter) La poussière tourne doucement
@@ -636,6 +688,8 @@ if (import.meta.env.DEV) {
   // Touche H : afficher ou cacher le panneau
   let guiVisible = true
   window.addEventListener('keydown', (event) => {
+    // On ignore la touche quand le visiteur écrit dans un champ du formulaire
+    if (event.target.closest('input, textarea')) return
     if (event.key === 'h') {
       guiVisible = !guiVisible
       gui.show(guiVisible)
